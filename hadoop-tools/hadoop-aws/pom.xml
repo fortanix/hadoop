@@ -383,6 +383,11 @@
   </build>
 
   <dependencies>
+     <dependency>
+      <groupId>com.fortanix</groupId>
+      <artifactId>sdkms-jce-provider</artifactId>
+      <version>4.2.1500</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>

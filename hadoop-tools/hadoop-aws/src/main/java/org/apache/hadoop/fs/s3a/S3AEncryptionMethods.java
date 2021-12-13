@@ -31,6 +31,7 @@ public enum S3AEncryptionMethods {
   SSE_S3("AES256"),
   SSE_KMS("SSE-KMS"),
   SSE_C("SSE-C"),
+  CSE_FTX("CSE-FTX"),
   NONE("");
 
   static final String UNKNOWN_ALGORITHM
@@ -64,6 +65,8 @@ public enum S3AEncryptionMethods {
       return SSE_KMS;
     case "SSE-C":
       return SSE_C;
+    case "CSE-FTX":
+      return CSE_FTX;
     default:
       throw new IOException(UNKNOWN_ALGORITHM + name);
     }

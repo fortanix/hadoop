@@ -76,6 +76,22 @@ public final class Constants {
   //use a custom endpoint?
   public static final String ENDPOINT = "fs.s3a.endpoint";
 
+  /**
+   * Default value of s3 endpoint: {@value}.
+   * It tells the AWS client to work it out by asking the central
+   * endpoint where the bucket lives; caching that
+   * value in the client for the life of the process.
+   * <p>
+   * Note: previously this constant was defined as
+   * {@link #CENTRAL_ENDPOINT}, however the actual
+   * S3A client code used "" as the default when
+   * {@link #ENDPOINT} was unset.
+   * As core-default.xml also set the endpoint to "",
+   * the empty string has long been the <i>real</i>
+   * default value.
+   */
+  public static final String DEFAULT_ENDPOINT = "";
+
   //Enable path style access? Overrides default virtual hosting
   public static final String PATH_STYLE_ACCESS = "fs.s3a.path.style.access";
 
@@ -226,7 +242,7 @@ public final class Constants {
       "fs.s3a.multipart.purge.age";
   public static final long DEFAULT_PURGE_EXISTING_MULTIPART_AGE = 86400;
 
-  // s3 server-side encryption, see S3AEncryptionMethods for valid options
+  // s3 server-side encryption or s3 client-side encryption method, see S3AEncryptionMethods for valid options
   public static final String SERVER_SIDE_ENCRYPTION_ALGORITHM =
       "fs.s3a.server-side-encryption-algorithm";
 
@@ -563,4 +579,15 @@ public final class Constants {
   public static final String STORE_CAPABILITY_DIRECTORY_MARKER_ACTION_DELETE
       = "fs.s3a.capability.directory.marker.action.delete";
 
+  /**
+   * AWS S3 region for the bucket. When set bypasses the construction of
+   * region through endpoint url.
+   */
+  public static final String AWS_REGION = "fs.s3a.endpoint.region";
+
+   /**
+   * The special S3 region which can be used to talk to any bucket.
+   * Value {@value}.
+   */
+  public static final String AWS_S3_CENTRAL_REGION = "us-east-1";
 }
