@@ -122,6 +122,10 @@ class S3ABlockOutputStream extends OutputStream {
    */
   private final S3AFileSystem.WriteOperationHelper writeOperationHelper;
 
+
+  /** is client side encryption enabled? */
+  private final boolean isCSEEnabled;
+
   /**
    * An S3A output stream which uploads partitions in a separate pool of
    * threads; different {@link S3ADataBlocks.BlockFactory}
@@ -147,7 +151,8 @@ class S3ABlockOutputStream extends OutputStream {
       long blockSize,
       S3ADataBlocks.BlockFactory blockFactory,
       S3AInstrumentation.OutputStreamStatistics statistics,
-      S3AFileSystem.WriteOperationHelper writeOperationHelper)
+      S3AFileSystem.WriteOperationHelper writeOperationHelper,
+      boolean isCSEEnabled)
       throws IOException {
     this.fs = fs;
     this.key = key;
@@ -155,6 +160,7 @@ class S3ABlockOutputStream extends OutputStream {
     this.blockSize = (int) blockSize;
     this.statistics = statistics;
     this.writeOperationHelper = writeOperationHelper;
+    this.isCSEEnabled = isCSEEnabled;
     Preconditions.checkArgument(blockSize >= Constants.MULTIPART_MIN_SIZE,
         "Block size is too small: %d", blockSize);
     this.executorService = MoreExecutors.listeningDecorator(executorService);
@@ -279,24 +285,28 @@ class S3ABlockOutputStream extends OutputStream {
       // of capacity
       // Trigger an upload then process the remainder.
       LOG.debug("writing more data than block has capacity -triggering upload");
-      uploadCurrentBlock();
+      uploadCurrentBlock(false);
       // tail recursion is mildly expensive, but given buffer sizes must be MB.
       // it's unlikely to recurse very deeply.
       this.write(source, offset + written, len - written);
     } else {
-      if (remainingCapacity == 0) {
+      if (remainingCapacity == 0 && !isCSEEnabled) {
         // the whole buffer is done, trigger an upload
-        uploadCurrentBlock();
+        uploadCurrentBlock(false);
       }
     }
   }
 
   /**
    * Start an asynchronous upload of the current block.
+   *
+   * @param isLast true, if part being uploaded is last and client side
+   *               encryption is enabled.
+   *
    * @throws IOException Problems opening the destination for upload
    * or initializing the upload.
    */
-  private synchronized void uploadCurrentBlock() throws IOException {
+  private synchronized void uploadCurrentBlock(boolean isLast) throws IOException {
     Preconditions.checkState(hasActiveBlock(), "No active block");
     LOG.debug("Writing block # {}", blockCount);
     if (multiPartUpload == null) {
@@ -304,7 +314,7 @@ class S3ABlockOutputStream extends OutputStream {
       multiPartUpload = new MultiPartUpload();
     }
     try {
-      multiPartUpload.uploadBlockAsync(getActiveBlock());
+      multiPartUpload.uploadBlockAsync(getActiveBlock(), isLast);
       bytesSubmitted += getActiveBlock().dataSize();
     } finally {
       // set the block to null, so the next write will create a new block.
@@ -347,8 +357,9 @@ class S3ABlockOutputStream extends OutputStream {
         // there has already been at least one block scheduled for upload;
         // put up the current then wait
         if (hasBlock && block.hasData()) {
-          //send last part
-          uploadCurrentBlock();
+          // send last part and set the value of isLastPart to true.
+          // Necessary to set this "true" in case of client side encryption.
+          uploadCurrentBlock(true);
         }
         // wait for the partial uploads to finish
         final List<PartETag> partETags =
@@ -479,7 +490,8 @@ class S3ABlockOutputStream extends OutputStream {
      * @param block block to upload
      * @throws IOException upload failure
      */
-    private void uploadBlockAsync(final S3ADataBlocks.DataBlock block)
+    private void uploadBlockAsync(final S3ADataBlocks.DataBlock block,
+        Boolean isLast)
         throws IOException {
       LOG.debug("Queueing upload of {}", block);
       final int size = block.dataSize();
@@ -492,7 +504,7 @@ class S3ABlockOutputStream extends OutputStream {
               size,
               uploadData.getUploadStream(),
               uploadData.getFile());
-
+          request.setLastPart(isLast);
       long transferQueueTime = now();
       BlockUploadProgress callback =
           new BlockUploadProgress(
