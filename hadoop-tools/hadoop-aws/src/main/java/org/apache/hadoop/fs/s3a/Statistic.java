@@ -150,7 +150,13 @@ public enum Statistic {
       "s3guard_metadatastore_put_path_latency",
       "s3guard metadata store put one metadata path lantency"),
   S3GUARD_METADATASTORE_INITIALIZATION("s3guard_metadatastore_initialization",
-      "s3guard metadata store initialization times");
+      "s3guard metadata store initialization times"),
+
+  /* Client side encryption gauge */
+  CLIENT_SIDE_ENCRYPTION_ENABLED(
+      "client_side_encryption_enabled",
+      "gauge to indicate if client side encryption is enabled"
+  );
 
 
   private static final Map<String, Statistic> SYMBOL_MAP =

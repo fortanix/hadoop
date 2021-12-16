@@ -449,7 +449,8 @@ public class Listing {
         // Skip over keys that are ourselves and old S3N _$folder$ files
         if (acceptor.accept(keyPath, summary) && filter.accept(keyPath)) {
           FileStatus status = createFileStatus(keyPath, summary,
-              owner.getDefaultBlockSize(keyPath), owner.getUsername());
+              owner.getDefaultBlockSize(keyPath), owner.getUsername(),
+              owner.isCSEEnabled());
           LOG.debug("Adding: {}", status);
           stats.add(status);
           added++;
@@ -642,7 +643,7 @@ public class Listing {
     public boolean accept(Path keyPath, S3ObjectSummary summary) {
       return !keyPath.equals(qualifiedPath)
           && !summary.getKey().endsWith(S3N_FOLDER_SUFFIX)
-          && !objectRepresentsDirectory(summary.getKey(), summary.getSize());
+          && !objectRepresentsDirectory(summary.getKey());
     }
 
     /**
