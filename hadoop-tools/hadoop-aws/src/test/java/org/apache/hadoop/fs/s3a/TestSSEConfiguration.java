@@ -78,7 +78,7 @@ public class TestSSEConfiguration extends Assert {
     conf.set(SERVER_SIDE_ENCRYPTION_ALGORITHM, SSE_KMS.getMethod());
     conf.set(OLD_S3A_SERVER_SIDE_ENCRYPTION_KEY, "kmskeyID");
     // verify key round trip
-    assertEquals("kmskeyID", getServerSideEncryptionKey(conf));
+    assertEquals("kmskeyID", getS3EncryptionKey(conf));
     // and that KMS lookup finds it
     assertEquals(SSE_KMS, getEncryptionAlgorithm(conf));
   }
@@ -93,14 +93,14 @@ public class TestSSEConfiguration extends Assert {
   public void testSSEEmptyKey() throws Throwable {
     // test the internal logic of the test setup code
     Configuration c = buildConf(SSE_C.getMethod(), "");
-    assertEquals("", getServerSideEncryptionKey(c));
+    assertEquals("", getS3EncryptionKey(c));
   }
 
   @Test
   public void testSSEKeyNull() throws Throwable {
     // test the internal logic of the test setup code
     final Configuration c = buildConf(SSE_C.getMethod(), null);
-    assertNull("", getServerSideEncryptionKey(c));
+    assertNull("", getS3EncryptionKey(c));
 
     intercept(IOException.class, SSE_C_NO_KEY_ERROR,
         new Callable<S3AEncryptionMethods>() {
@@ -122,7 +122,7 @@ public class TestSSEConfiguration extends Assert {
     // provider provisioned value instead.
     conf.set(SERVER_SIDE_ENCRYPTION_KEY, "keyInConfObject");
 
-    String sseKey = getServerSideEncryptionKey(conf);
+    String sseKey = getS3EncryptionKey(conf);
     assertNotNull("Proxy password should not retrun null.", sseKey);
     assertEquals("Proxy password override did NOT work.", key, sseKey);
   }
@@ -141,7 +141,7 @@ public class TestSSEConfiguration extends Assert {
     // let's set the password in config and ensure that it uses the credential
     // provider provisioned value instead.
     //conf.set(OLD_S3A_SERVER_SIDE_ENCRYPTION_KEY, "oldKeyInConf");
-    String sseKey = getServerSideEncryptionKey(conf);
+    String sseKey = getS3EncryptionKey(conf);
     assertNotNull("Proxy password should not retrun null.", sseKey);
     assertEquals("Proxy password override did NOT work.", key, sseKey);
   }
