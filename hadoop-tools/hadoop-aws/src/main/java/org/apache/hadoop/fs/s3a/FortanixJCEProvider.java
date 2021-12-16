@@ -78,23 +78,27 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
     //public FortanixEncryptionMaterialsProvider(FortanixEncryptionMaterials materials) {
     //super(materials);
 
+    /*
     public FortanixJCEProvider() {
         BasicConfigurator.configure();
         LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
         init(RSA);
     }
+    */
 
-    public FortanixJCEProvider(String keyType) {
+    public FortanixJCEProvider(String keyType, String keyId) {
         BasicConfigurator.configure();
         LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
-        init(keyType);
+        init(keyType, keyId);
     }
 
+    /*
     public FortanixJCEProvider(String keychainFilePath, String storePwd) {
         BasicConfigurator.configure();
         LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
         init(keychainFilePath, storePwd, RSA);
     }
+    */
 
     public FortanixJCEProvider(String keychainFilePath, String storePwd, String keyType) {
         BasicConfigurator.configure();
@@ -141,7 +145,7 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
         }
     }
 
-    private void init(String keyType) {
+    private void init(String keyType, String keyId) {
         // skip a Key Store
         try {
             initFortanix();
@@ -149,7 +153,7 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
             if (conf != null) { 
                 descValue = this.conf.get(CSE_KEY_NAME_CONF);
             } else {
-                descValue = "s3_cse_key_"+keyType;
+                descValue = keyId;
             }
 
             Preconditions.checkArgument(!Strings.isNullOrEmpty(descValue),
