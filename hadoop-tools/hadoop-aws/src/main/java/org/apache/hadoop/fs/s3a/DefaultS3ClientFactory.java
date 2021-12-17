@@ -118,7 +118,8 @@ public class DefaultS3ClientFactory extends Configured implements
         new AmazonS3EncryptionClientV2Builder();
     Configuration conf = getConf();
 
-    //CSE-FTX Method
+    // CSE-FTX Method
+    // Should we have a new config entry for CLIENT_SIDE_ENCRYPTION_KEY?
     String kmsKeyId = S3AUtils.lookupPassword(conf,
         SERVER_SIDE_ENCRYPTION_KEY, null);
     // Check if kmsKeyID is not null
@@ -132,8 +133,10 @@ public class DefaultS3ClientFactory extends Configured implements
     builder.withEncryptionMaterialsProvider(materialsProvider);
     */
 
-    //TODO: For now we should pass the Ftx key name but eventually we should use Ftx key Id and we should remove the hardcoded RSA param.
-    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider("RSA", kmsKeyId); // bypass a JCE keystore since SdkmsKeyService can fetch directly..
+    // TODO: For now we should pass the Ftx key name
+    // Ideally we should use Ftx key Id during READ/DECRYPT and key name during WRITE/PUT
+    // TODO: remove the hardcoded RSA param and use a config
+    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider("AES", kmsKeyId);
     builder.withEncryptionMaterialsProvider(ftxJCEKeyChain);
 
     //Configure basic params of a S3 builder.

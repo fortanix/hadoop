@@ -159,6 +159,14 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
             Preconditions.checkArgument(!Strings.isNullOrEmpty(descValue),
                     String.format("%s cannot be empty", CSE_KEY_NAME_CONF));
 
+            /*
+            RSACipher in Fortanix gets called by AWS SDK using WRAP/UNWRAP with a CompositeCEK which is a non-AES key
+            special handling needed in SdkmsJCE to treat this cipher in ENCRYPT/DECRYPT mode - TBD @Jeffrey/@Bushra
+            Or else a fix will be needed in the AWS SDK to Cipher.init and doFinal using ENCRYPT/DECRYPT mode
+
+            For now lets use AES/GCM for Key Wrap
+            also set ENV in Hadoop ENV files so AES:transient keys are EXPORTable by default
+            */
             if (keyType.equals(RSA)) {
                 PrivateKey privateKey = null;
                 PublicKey publicKey = null;
