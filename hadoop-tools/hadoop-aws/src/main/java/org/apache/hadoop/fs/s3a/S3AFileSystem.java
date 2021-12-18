@@ -213,8 +213,6 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
    */
   public void initialize(URI name, Configuration originalConf)
       throws IOException {
-    LOG.warn("Bruno was here 45 initialize");
-    System.out.println("Bruno was here 47 again");
     uri = S3xLoginHelper.buildFSURI(name);
     // get the host; this is guaranteed to be non-null, non-empty
     bucket = name.getHost();

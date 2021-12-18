@@ -3,7 +3,10 @@ package org.apache.hadoop.fs.s3a;
 import com.fortanix.sdkms.jce.provider.SdkmsJCE;
 import com.fortanix.sdkms.jce.provider.service.SdkmsKeyService;
 import com.fortanix.sdkms.jce.provider.SdkmsSecretKey;
-
+import com.fortanix.sdkms.v1.model.KeyObject;
+import com.fortanix.sdkms.v1.model.ObjectType;
+import com.fortanix.sdkms.v1.model.SobjectDescriptor;
+import com.amazonaws.services.cloudfront.model.InvalidArgumentException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.EncryptionMaterials;
@@ -17,9 +20,7 @@ import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.BasicConfigurator;
+import org.slf4j.Logger;
 
 
 import java.io.Serializable;
@@ -53,9 +54,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configurable {
+public class FortanixJCEProvider implements EncryptionMaterialsProvider {
 
-    static final Logger LOGGER = Logger.getLogger(FortanixJCEProvider.class.getName());
+    protected static final Logger LOG = S3AFileSystem.LOG;
 
     private final String ENDPOINT_DEFAULT = "https://sdkms.fortanix.com";
     private final String FXAPIKEY_DEFAULT = "OWFhM2QxYzYtM2NiYS00NDRiLWIwNWEtM2I5YmU1ZjEyZGNjOlNRUFJvU2pnNkxDQmtPanJMbnMtclE=";
@@ -66,44 +67,21 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
     private final String RSA = "RSA";
     private final String KEY_TYPE_DEFAULT= RSA;
 
-    private final String CSE_KEY_NAME_CONF = "fs.s3a.cse.encryption.keyname"; // hadoop conf reference to DSM key
     private final String CSE_MATERIAL_DESC = "jce_fortanix_key"; // S3 object metadata key reference
+    private final String KEY_ID = "fortanix_key_id";
 
     private static SdkmsJCE providerJCE;
 
     private Configuration conf;
-    private EncryptionMaterials materials;
-    private String descValue;
+    private Map<String, EncryptionMaterials> materialsCache;
+    private String keyName;
+    private String keyType;
 
-    //public FortanixEncryptionMaterialsProvider(FortanixEncryptionMaterials materials) {
-    //super(materials);
 
-    /*
-    public FortanixJCEProvider() {
-        BasicConfigurator.configure();
-        LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
-        init(RSA);
-    }
-    */
-
-    public FortanixJCEProvider(String keyType, String keyId) {
-        BasicConfigurator.configure();
-        LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
-        init(keyType, keyId);
-    }
-
-    /*
-    public FortanixJCEProvider(String keychainFilePath, String storePwd) {
-        BasicConfigurator.configure();
-        LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
-        init(keychainFilePath, storePwd, RSA);
-    }
-    */
-
-    public FortanixJCEProvider(String keychainFilePath, String storePwd, String keyType) {
-        BasicConfigurator.configure();
-        LOGGER.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
-        init(keychainFilePath, storePwd, keyType);
+    public FortanixJCEProvider(String keyName) {
+        // BasicConfigurator.configure();
+        LOG.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
+        init(keyName);
     }
 
     public Provider getProviderInstance() {
@@ -115,7 +93,7 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
 
         String strEndpoint = new String(ENDPOINT_DEFAULT);
         String strApiKey = new String("");
-        LOGGER.debug("init Client..");
+        LOG.debug("init Client..");
 
         if (conf != null && !Strings.isNullOrEmpty(conf.get(ENDPOINT_CONF))) {
             strEndpoint = conf.get(ENDPOINT_CONF);
@@ -125,7 +103,7 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
         } else {
             strApiKey = FXAPIKEY_DEFAULT;
         }
-        LOGGER.debug("Trying to login with: " + strEndpoint);
+        LOG.debug("Trying to login with: " + strEndpoint);
         try {
             providerJCE = SdkmsJCE.initialize(strEndpoint, strApiKey); // explicit
             //providerJCE = new SdkmsJCE(); // defaults login to ENV vars
@@ -138,27 +116,39 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
                 else
                     Security.insertProviderAt(providerJCE, 5);
             }
-            LOGGER.debug("Successful login");
+            LOG.debug("Successful login");
         } catch (Exception e) {
-            LOGGER.error("failure in logging in : " + e);
+            LOG.error("failure in logging in : " + e);
             throw new ProviderException(e.getMessage());
         }
     }
 
-    private void init(String keyType, String keyId) {
-        // skip a Key Store
+    private void init(String keyName) {
         try {
             initFortanix();
+            this.keyName = keyName;
+            this.materialsCache = new HashMap<String, EncryptionMaterials>();
+        } catch (ProviderException | NullPointerException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-            if (conf != null) { 
-                descValue = this.conf.get(CSE_KEY_NAME_CONF);
-            } else {
-                descValue = keyId;
-            }
+    private String getKeyByName(String keyName) {
+        LOG.debug("Getting key by name: " + keyName);
+        SobjectDescriptor descriptor = new SobjectDescriptor();
+        descriptor.setName(keyName);
+        return getKeyInner(descriptor);
+    }
 
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(descValue),
-                    String.format("%s cannot be empty", CSE_KEY_NAME_CONF));
+    private String getKeyById(String keyId) {
+        LOG.debug("Getting key by ID: " + keyId);
+        SobjectDescriptor descriptor = new SobjectDescriptor();
+        descriptor.setKid(keyId);
+        return getKeyInner(descriptor);
+    }
 
+    private String getKeyInner(SobjectDescriptor descriptor) {
+        try {
             /*
             RSACipher in Fortanix gets called by AWS SDK using WRAP/UNWRAP with a CompositeCEK which is a non-AES key
             special handling needed in SdkmsJCE to treat this cipher in ENCRYPT/DECRYPT mode - TBD @Jeffrey/@Bushra
@@ -167,126 +157,86 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider, Configu
             For now lets use AES/GCM for Key Wrap
             also set ENV in Hadoop ENV files so AES:transient keys are EXPORTable by default
             */
-            if (keyType.equals(RSA)) {
-                PrivateKey privateKey = null;
-                PublicKey publicKey = null;
 
-                LOGGER.debug("Getting RSA keys from DSM through JCE SdkmsKeyService");
-                Key rsaPrivateKey = SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.getSecurityObjectByName(descValue), false); // directly get RSA Private Key
-                Key rsaPublicKey2 = SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.toKeyObject(rsaPrivateKey), true);
+            KeyObject ftxKey = SdkmsKeyService.getKeyObject(descriptor);
+            String kid = ftxKey.getKid();
+            ObjectType keyType = ftxKey.getObjType();
+            EncryptionMaterials materials = null;
+            if (keyType == ObjectType.RSA) {
+                LOG.debug("Getting RSA keys from DSM through JCE SdkmsKeyService");
+                Key rsaPrivateKey = SdkmsKeyService.getKeyFromKeyObject(ftxKey, false); // directly get RSA Private Key
+                Key rsaPublicKey = SdkmsKeyService.getKeyFromKeyObject(ftxKey, true);
 
-                Key rsaPublicKey = SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.getSecurityObjectByName(descValue), true);
+                PrivateKey privateKey = (PrivateKey) rsaPrivateKey;
+                PublicKey publicKey = (PublicKey) rsaPublicKey;
 
-                privateKey = (PrivateKey)rsaPrivateKey;
-                publicKey = (PublicKey)rsaPublicKey;
+                materials = new EncryptionMaterials(new KeyPair(publicKey, privateKey));
 
-                this.materials = new EncryptionMaterials(new KeyPair(publicKey, privateKey));
-
-            } else { // AES
-                LOGGER.debug("Getting AES key from DSM through JCE SdkmsKeyService");
-                SecretKey aesSecretKey = (SecretKey)SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.getSecurityObjectByName(descValue), false); // directly get AES Secret Key
-                this.materials = new EncryptionMaterials(aesSecretKey);
+            } else if (keyType == ObjectType.AES) {
+                LOG.debug("Getting AES key from DSM through JCE SdkmsKeyService");
+                SecretKey aesSecretKey = (SecretKey)SdkmsKeyService.getKeyFromKeyObject(ftxKey, false); // directly get AES Secret Key
+                materials = new EncryptionMaterials(aesSecretKey);
+            } else {
+                throw new InvalidKeyException("FortanixJCEProvider was given key " + keyName + " that is not RSA nor AES");
             }
-            this.materials.addDescription(CSE_MATERIAL_DESC, descValue);
 
+            materials.addDescription(KEY_ID, kid);
+            materials.addDescription(CSE_MATERIAL_DESC, keyName);
+            this.materialsCache.put(kid, materials);
+            return kid;
         } catch (ProviderException | InvalidKeyException | NullPointerException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void init(String keychainFilePath, String storePwd, String keyType) {
-        // use a Key Store
-        try {
-            initFortanix();
-            if (conf != null) { 
-                descValue = this.conf.get(CSE_KEY_NAME_CONF);
-            } else {
-                // KeyStore alias (actual key in DSM has an extra suffix)
-                if (keyType.equals(RSA))
-                    descValue = "s3_cse_rsa_jce";
-                else
-                    descValue = "s3_cse_aes_jce";
-            }
-
-            Preconditions.checkArgument(!Strings.isNullOrEmpty(descValue),
-                    String.format("%s cannot be empty", CSE_KEY_NAME_CONF));
-
-            LOGGER.debug("Reading key store: " + keychainFilePath);
-            // either SDKMS or sdkms-local as provider 
-            // sdkms-local has the advantage of simple metadata available locally
-            // both store types always refer to material inside DSM
-            KeyStore keyStore = KeyStore.getInstance("SDKMS-local", providerJCE);
-            try (FileInputStream fis = new FileInputStream(keychainFilePath)) {
-                keyStore.load(fis, storePwd.toCharArray());
-            } catch(IOException e) {
-                LOGGER.error("failure in loading keystore : " + e);
-                throw new IOException(e.getMessage());
-            }
-
-            if (keyType.equals(RSA)) {
-                PrivateKey privateKey = null;
-                PublicKey publicKey = null;
-
-                LOGGER.debug("Getting RSA keys from DSM through JCE SdkmsKeyService");
-                // defaults to RSA, unless constructor got AES? or use a setting specifying RSA or AES or different classes
-                Key rsaPrivateKey = keyStore.getKey(descValue, storePwd.toCharArray());
-                //publicKey = keyStore.getCertificate(descValue).getPublicKey(); // returns a Sun.RSA key rather than a RSAPublicKeyImp object from SdkmsJCE
-                Key rsaPublicKey = SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.toKeyObject(rsaPrivateKey), true);
-
-                privateKey = (PrivateKey)rsaPrivateKey;
-                publicKey = (PublicKey)rsaPublicKey;
-
-                this.materials = new EncryptionMaterials(new KeyPair(publicKey, privateKey));
-
-            } else {
-                LOGGER.debug("Getting AES key from DSM through JCE SdkmsKeyService");
-                Key aesKey = keyStore.getKey(descValue, storePwd.toCharArray());
-                
-                LOGGER.debug("Getting AES key from DSM through JCE SdkmsKeyService");
-                SecretKey aesSecretKey = (SecretKey)SdkmsKeyService.getKeyFromKeyObject(SdkmsKeyService.toKeyObject(aesKey), false);
-                this.materials = new EncryptionMaterials(aesSecretKey);
-            }
-            this.materials.addDescription(CSE_MATERIAL_DESC, descValue);
-
-        } catch (ProviderException | IOException | NoSuchAlgorithmException | KeyStoreException | InvalidKeyException | CertificateException | UnrecoverableKeyException | NullPointerException e) {
-            throw new RuntimeException(e);
+    public String convertWithIteration(Map<String, ?> map) {
+        StringBuilder mapAsString = new StringBuilder("{");
+        for (String key : map.keySet()) {
+            mapAsString.append(key + "=" + map.get(key) + ", ");
         }
+        mapAsString.delete(mapAsString.length()-2, mapAsString.length()).append("}");
+        return mapAsString.toString();
     }
 
     @Override
-        public EncryptionMaterials getEncryptionMaterials(Map<String, String> materialsDescription) {
-            if (materialsDescription == null
-                    || materialsDescription.get(CSE_MATERIAL_DESC) == null
-                    || descValue.equals(materialsDescription.get(CSE_MATERIAL_DESC))) {
-                return this.materials;
+    public EncryptionMaterials getEncryptionMaterials(Map<String, String> materialsDescription) {
+        if (materialsDescription != null) {
+            String kid = materialsDescription.get(KEY_ID);
+            if (kid != null) {
+                EncryptionMaterials materials = this.materialsCache.get(kid);
+                if (materials != null) {
+                    return materials;
+                } else {
+                    this.getKeyById(kid);
+                    return this.materialsCache.get(kid);
+                }
             } else {
-                throw new RuntimeException(
-                        String.format("RSA key pair (%s: %s) doesn't match with the materials description", CSE_MATERIAL_DESC, descValue));
+                throw new RuntimeException("materialsDescription map did not contain '" + KEY_ID + "' key");
             }
+        } else {
+            throw new InvalidArgumentException("No 'materialsDescription' was provided");
         }
+    }
+
+    /**
+     * Returns EncryptionMaterials which the caller can use for encryption.
+     * Each implementation of EncryptionMaterialsProvider can choose its own
+     * strategy for loading encryption material.  For example, an
+     * implementation might load encryption material from an existing key
+     * management system, or load new encryption material when keys are
+     * rotated.
+     *
+     * @return EncryptionMaterials which the caller can use to encrypt or
+     * decrypt data.
+    */
+    @Override
+    public EncryptionMaterials getEncryptionMaterials() {
+        String kid = this.getKeyByName(this.keyName);
+        return this.materialsCache.get(kid);
+    }
 
     @Override
-        public EncryptionMaterials getEncryptionMaterials() {
-            if (this.materials != null) {
-                return this.materials;
-            } else {
-                throw new RuntimeException("RSA key pair is not initialized.");
-            }
-        }
+    public void refresh() {
 
-    @Override
-        public void refresh() {
-
-        }
-
-    @Override
-        public Configuration getConf() {
-            return this.conf;
-        }
-
-    @Override
-        public void setConf(Configuration conf) {
-            this.conf = conf;
-        }
-
+    }
 }

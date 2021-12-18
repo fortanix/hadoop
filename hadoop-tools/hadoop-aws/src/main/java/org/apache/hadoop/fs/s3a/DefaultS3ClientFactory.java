@@ -120,11 +120,11 @@ public class DefaultS3ClientFactory extends Configured implements
 
     // CSE-FTX Method
     // Should we have a new config entry for CLIENT_SIDE_ENCRYPTION_KEY?
-    String kmsKeyId = S3AUtils.lookupPassword(conf,
+    String kmsKeyName = S3AUtils.lookupPassword(conf,
         SERVER_SIDE_ENCRYPTION_KEY, null);
     // Check if kmsKeyID is not null
-    Preconditions.checkArgument(kmsKeyId != null, "CSE-KMS method "
-        + "requires KMS key ID. Use " + SERVER_SIDE_ENCRYPTION_KEY
+    Preconditions.checkArgument(kmsKeyName != null, "CSE-FTX method "
+        + "requires KMS key Name. Use " + SERVER_SIDE_ENCRYPTION_KEY
         + " property to set it. ");
 
     /* Original PR HADOOP-13887
@@ -135,8 +135,7 @@ public class DefaultS3ClientFactory extends Configured implements
 
     // TODO: For now we should pass the Ftx key name
     // Ideally we should use Ftx key Id during READ/DECRYPT and key name during WRITE/PUT
-    // TODO: remove the hardcoded RSA param and use a config
-    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider("AES", kmsKeyId);
+    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider(kmsKeyName);
     builder.withEncryptionMaterialsProvider(ftxJCEKeyChain);
 
     //Configure basic params of a S3 builder.
