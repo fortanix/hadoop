@@ -2,57 +2,31 @@ package org.apache.hadoop.fs.s3a;
 
 import com.fortanix.sdkms.jce.provider.SdkmsJCE;
 import com.fortanix.sdkms.jce.provider.service.SdkmsKeyService;
-import com.fortanix.sdkms.jce.provider.SdkmsSecretKey;
 import com.fortanix.sdkms.v1.model.KeyObject;
 import com.fortanix.sdkms.v1.model.ObjectType;
 import com.fortanix.sdkms.v1.model.SobjectDescriptor;
+
 import com.amazonaws.services.cloudfront.model.InvalidArgumentException;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.EncryptionMaterials;
 import com.amazonaws.services.s3.model.EncryptionMaterialsProvider;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 
-import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 
-import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 
-
-import java.io.Serializable;
-import java.io.IOException;
-import java.io.FileInputStream;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.Paths;
-import java.nio.file.InvalidPathException;
 import java.lang.NullPointerException;
 
 import java.security.*;
 import java.security.Provider;
 import java.security.ProviderException;
-import java.security.KeyFactory;
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.security.cert.CertificateException;
-import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec;
 import javax.crypto.SecretKey;
 
-import java.util.ArrayList;
-import java.util.TreeMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class FortanixJCEProvider implements EncryptionMaterialsProvider {
 
@@ -63,10 +37,6 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider {
     private final String ENDPOINT_CONF = "fs.s3a.cse.fortanixEndpoint";
     private final String APIKEY_CONF = "fs.s3a.cse.fortanixApiKey";
 
-    private final String AES = "RSA";
-    private final String RSA = "RSA";
-    private final String KEY_TYPE_DEFAULT= RSA;
-
     private final String CSE_MATERIAL_DESC = "jce_fortanix_key"; // S3 object metadata key reference
     private final String KEY_ID = "fortanix_key_id";
 
@@ -75,7 +45,6 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider {
     private Configuration conf;
     private Map<String, EncryptionMaterials> materialsCache;
     private String keyName;
-    private String keyType;
 
 
     public FortanixJCEProvider(String keyName) {
@@ -89,47 +58,32 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider {
     }
 
     // TBD JWT Auth
-    private void initFortanix() {
-
-        String strEndpoint = new String(ENDPOINT_DEFAULT);
-        String strApiKey = new String("");
-        LOG.debug("init Client..");
-
-        if (conf != null && !Strings.isNullOrEmpty(conf.get(ENDPOINT_CONF))) {
-            strEndpoint = conf.get(ENDPOINT_CONF);
-        }
-        if (conf != null && !Strings.isNullOrEmpty(conf.get(APIKEY_CONF))) {
-            strApiKey = conf.get(APIKEY_CONF);
-        } else {
-            strApiKey = FXAPIKEY_DEFAULT;
-        }
-        LOG.debug("Trying to login with: " + strEndpoint);
-        try {
-            providerJCE = SdkmsJCE.initialize(strEndpoint, strApiKey); // explicit
-            //providerJCE = new SdkmsJCE(); // defaults login to ENV vars
-
-            if (Security.getProvider(providerJCE.getName()) == null) {
-
-                boolean helloDebug = true;
-                if (helloDebug == false)
-                    Security.addProvider(providerJCE);
-                else
-                    Security.insertProviderAt(providerJCE, 5);
-            }
-            LOG.debug("Successful login");
-        } catch (Exception e) {
-            LOG.error("failure in logging in : " + e);
-            throw new ProviderException(e.getMessage());
-        }
-    }
-
     private void init(String keyName) {
         try {
-            initFortanix();
+            String strEndpoint = new String(ENDPOINT_DEFAULT);
+            String strApiKey = new String("");
+            LOG.debug("init Client..");
+
+            if (conf != null && !Strings.isNullOrEmpty(conf.get(ENDPOINT_CONF))) {
+                strEndpoint = conf.get(ENDPOINT_CONF);
+            }
+            if (conf != null && !Strings.isNullOrEmpty(conf.get(APIKEY_CONF))) {
+                strApiKey = conf.get(APIKEY_CONF);
+            } else {
+                strApiKey = FXAPIKEY_DEFAULT;
+            }
+            LOG.debug("Trying to login with: " + strEndpoint);
+            providerJCE = SdkmsJCE.initialize(strEndpoint, strApiKey); // explicit
+            LOG.debug("Successful login");
+
+            if (Security.getProvider(providerJCE.getName()) == null) {
+               Security.insertProviderAt(providerJCE, 5);
+            }
+
             this.keyName = keyName;
             this.materialsCache = new HashMap<String, EncryptionMaterials>();
         } catch (ProviderException | NullPointerException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException(e.getMessage());
         }
     }
 
