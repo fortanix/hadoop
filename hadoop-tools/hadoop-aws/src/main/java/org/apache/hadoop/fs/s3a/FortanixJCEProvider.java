@@ -10,44 +10,38 @@ import com.amazonaws.services.cloudfront.model.InvalidArgumentException;
 import com.amazonaws.services.s3.model.EncryptionMaterials;
 import com.amazonaws.services.s3.model.EncryptionMaterialsProvider;
 
-import com.google.common.base.Strings;
-
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.NullPointerException;
-
 import java.security.*;
 import java.security.Provider;
 import java.security.ProviderException;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import javax.crypto.SecretKey;
-
 import java.util.HashMap;
 import java.util.Map;
+import javax.crypto.SecretKey;
 
-public class FortanixJCEProvider implements EncryptionMaterialsProvider {
+import static org.apache.hadoop.fs.s3a.Constants.*;
+
+public class FortanixJCEProvider extends Configured implements EncryptionMaterialsProvider {
 
     protected static final Logger LOG = S3AFileSystem.LOG;
-
-    private final String ENDPOINT_DEFAULT = "https://sdkms.fortanix.com";
-    private final String FXAPIKEY_DEFAULT = "OWFhM2QxYzYtM2NiYS00NDRiLWIwNWEtM2I5YmU1ZjEyZGNjOlNRUFJvU2pnNkxDQmtPanJMbnMtclE=";
-    private final String ENDPOINT_CONF = "fs.s3a.cse.fortanixEndpoint";
-    private final String APIKEY_CONF = "fs.s3a.cse.fortanixApiKey";
 
     private final String CSE_MATERIAL_DESC = "jce_fortanix_key"; // S3 object metadata key reference
     private final String KEY_ID = "fortanix_key_id";
 
     private static SdkmsJCE providerJCE;
 
-    private Configuration conf;
     private Map<String, EncryptionMaterials> materialsCache;
     private String keyName;
 
 
-    public FortanixJCEProvider(String keyName) {
+    public FortanixJCEProvider(String keyName) throws IOException {
         // BasicConfigurator.configure();
         LOG.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
         init(keyName);
@@ -58,22 +52,22 @@ public class FortanixJCEProvider implements EncryptionMaterialsProvider {
     }
 
     // TBD JWT Auth
-    private void init(String keyName) {
-        try {
-            String strEndpoint = new String(ENDPOINT_DEFAULT);
-            String strApiKey = new String("");
-            LOG.debug("init Client..");
+    private void init(String keyName) throws IOException {
+        LOG.debug("init Client..");
+        Configuration conf = getConf();
+        String endpoint = S3AUtils.
+            lookupPassword(conf, CSE_FTX_ENDPOINT, DEFAULT_CSE_FTX_ENDPOINT);
+        String apiKey = S3AUtils.
+            lookupPassword(conf, CSE_FTX_APIKEY, null);
 
-            if (conf != null && !Strings.isNullOrEmpty(conf.get(ENDPOINT_CONF))) {
-                strEndpoint = conf.get(ENDPOINT_CONF);
-            }
-            if (conf != null && !Strings.isNullOrEmpty(conf.get(APIKEY_CONF))) {
-                strApiKey = conf.get(APIKEY_CONF);
-            } else {
-                strApiKey = FXAPIKEY_DEFAULT;
-            }
-            LOG.debug("Trying to login with: " + strEndpoint);
-            providerJCE = SdkmsJCE.initialize(strEndpoint, strApiKey); // explicit
+        if (apiKey == null) {
+            throw new IllegalArgumentException(
+                "The CSE-FTX API Key must be specified");
+        }
+
+        try {
+            LOG.debug("Trying to login with: " + endpoint);
+            providerJCE = SdkmsJCE.initialize(endpoint, apiKey);
             LOG.debug("Successful login");
 
             if (Security.getProvider(providerJCE.getName()) == null) {

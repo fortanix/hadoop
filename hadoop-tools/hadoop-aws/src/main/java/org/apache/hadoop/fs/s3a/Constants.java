@@ -590,4 +590,19 @@ public final class Constants {
    * Value {@value}.
    */
   public static final String AWS_S3_CENTRAL_REGION = "us-east-1";
+
+  /**
+   * Endpoint for the FTX provider to do crypto.
+   */
+  public static final String CSE_FTX_ENDPOINT = "fs.s3a.cse-ftx.endpoint";
+
+  /**
+   * Default endpoint for the FTX provider to do crypto.
+   */
+  public static final String DEFAULT_CSE_FTX_ENDPOINT = "https://sdkms.fortanix.com";
+
+  /**
+   * API Key used by the provider to login to FTX endpoint.
+   */
+  public static final String CSE_FTX_APIKEY = "fs.s3a.cse-ftx.api-key";
 }
