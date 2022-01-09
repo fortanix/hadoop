@@ -133,7 +133,7 @@ public class DefaultS3ClientFactory extends Configured implements
 
     // TODO: For now we should pass the Ftx key name
     // Ideally we should use Ftx key Id during READ/DECRYPT and key name during WRITE/PUT
-    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider(kmsKeyName);
+    FortanixJCEProvider ftxJCEKeyChain = new FortanixJCEProvider(conf, kmsKeyName);
     builder.withEncryptionMaterialsProvider(ftxJCEKeyChain);
 
     //Configure basic params of a S3 builder.

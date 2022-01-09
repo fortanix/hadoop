@@ -33,7 +33,7 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
     protected static final Logger LOG = S3AFileSystem.LOG;
 
     private final String CSE_MATERIAL_DESC = "jce_fortanix_key"; // S3 object metadata key reference
-    private final String KEY_ID = "fortanix_key_id";
+    private final String CSE_MATERIAL_KID = "fortanix_key_id";
 
     private static SdkmsJCE providerJCE;
 
@@ -41,9 +41,8 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
     private String keyName;
 
 
-    public FortanixJCEProvider(String keyName) throws IOException {
-        // BasicConfigurator.configure();
-        LOG.debug("Constructihg.. " + FortanixJCEProvider.class.getName());
+    public FortanixJCEProvider(Configuration conf, String keyName) throws IOException {
+        this.setConf(conf);
         init(keyName);
     }
 
@@ -53,8 +52,9 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
 
     // TBD JWT Auth
     private void init(String keyName) throws IOException {
-        LOG.debug("init Client..");
+        LOG.debug("init DSM Client..");
         Configuration conf = getConf();
+
         String endpoint = S3AUtils.
             lookupPassword(conf, CSE_FTX_ENDPOINT, DEFAULT_CSE_FTX_ENDPOINT);
         String apiKey = S3AUtils.
@@ -128,7 +128,7 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
                 throw new InvalidKeyException("FortanixJCEProvider was given key " + keyName + " that is not RSA nor AES");
             }
 
-            materials.addDescription(KEY_ID, kid);
+            materials.addDescription(CSE_MATERIAL_KID, kid);
             materials.addDescription(CSE_MATERIAL_DESC, keyName);
             this.materialsCache.put(kid, materials);
             return kid;
@@ -149,7 +149,7 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
     @Override
     public EncryptionMaterials getEncryptionMaterials(Map<String, String> materialsDescription) {
         if (materialsDescription != null) {
-            String kid = materialsDescription.get(KEY_ID);
+            String kid = materialsDescription.get(CSE_MATERIAL_KID);
             if (kid != null) {
                 EncryptionMaterials materials = this.materialsCache.get(kid);
                 if (materials != null) {
@@ -159,7 +159,7 @@ public class FortanixJCEProvider extends Configured implements EncryptionMateria
                     return this.materialsCache.get(kid);
                 }
             } else {
-                throw new RuntimeException("materialsDescription map did not contain '" + KEY_ID + "' key");
+                throw new RuntimeException("materialsDescription map did not contain '" + CSE_MATERIAL_KID + "' key");
             }
         } else {
             throw new InvalidArgumentException("No 'materialsDescription' was provided");
